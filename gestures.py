@@ -11,6 +11,7 @@ import getopt
 import serial
 import pickle
 import atexit
+from copy import deepcopy
 
 
 help_message = '''
@@ -22,9 +23,11 @@ Use -c or --calibrate with additional flags
 '''
 
 # global stuff
-
-# ser = serial.Serial('/dev/tty.usbserial-A7004INu', 9600)
-# ser.flush()
+try:
+    ser = serial.Serial('/dev/tty.usbserial-A7004INu', 9600)
+    ser.flush()
+except:
+    print "cant connect to serial"
 
 # these are used to define the limits of the sensor
 maxData = [0,0,0]
@@ -41,14 +44,11 @@ def main(argv=None):
         argv = sys.argv
     try:
         try:
-            opts, args = getopt.getopt(argv[1:], "h:casbvl", ["help", "calibrate", "attack", "build", "scan", "limits"])
+            opts, args = getopt.getopt(argv[1:], "hg:casbl", ["help", "calibrate", "attack", "build", "scan", "limits", "getSample="])
         except getopt.error, msg:
             raise Usage(msg)
             
-        # option processing
         for option, value in opts:
-            if option == "-v":
-                verbose = True
             if option in ("-h", "--help"):
                 raise Usage(help_message)
             if option in (("-c", "--calibrate") and ("-a", "--attack")):
@@ -59,6 +59,8 @@ def main(argv=None):
                 calibrateScan()
             if option in ("-l", "--limits"):
                 defineLimits()
+            if option in ("-g", "--getSample"):
+                getSampleData(value)
                 
     except Usage, err:
         print >> sys.stderr, sys.argv[0].split("/")[-1] + ": " + str(err.msg)
@@ -80,9 +82,15 @@ def calibrateScan():
 
 
 def defineLimits():
+    """
+    Run this function to find the limits of the accelerometer. Constantly reads the values and keeps track of the min
+    and mac on each access. When keyboard interrupts, the min and max values are used to create a range and three regions
+    on each axis. the regions are used later on when creating patterns and sample data
+    """
     atexit.register(resetLimits)
     while 1:
         try:
+            ser.flush()
             data = ser.readline().split()
             for i in range(len(data)):
                 data[i] = int(data[i])
@@ -100,44 +108,54 @@ def defineLimits():
         except (KeyboardInterrupt, SystemExit):
             raise
         
-        except:
+        except NameError:
             sys.exit("bad serial data")
 
 
 def getSampleData(sampleLength):
     """
-    Follow the position of the sensor, increment time series only when position has left a region (creted in resetlimits)
-    Returns a nested dictionary with tuples for keys
+    Follow the position of the sensor, increment time series only when position has left a region (created in resetLimits)
+    Returns a nested dictionary with tuple for keys
     To find the number of times the sensor has transitioned from one region to another, access the dictionary
     with the before and after regions as tuples, eg:
     number of times sensor transitioned from one region to another = sampleData[0,2,1][2,0,1]
     """
+    #TODO Need to take sampleData and transform totals to percentage by dividing the number of occurances by sampleLength
     sampleData = initPattern(1)
     lastPosition = (0,0,0)
     areas = loadPattern("pickles/areas.pickle")
-    
-    if counter < sampleLength:
-        data = ser.readline().split()
-        for i in range(len(data)):
-            data[i] = int(data[i])
+    counter = 0
+    while counter < sampleLength:
+        try:
+            ser.flush()
+            rawData = ser.readline().split()
+        except:
+            rawData = None
+            print "can't read serial"
+        if rawData:
+            for i in range(len(rawData)): rawData[i] = int(rawData[i])
             
         keys = ["x","y","z"]
+        data = {"x":rawData[0], "y":rawData[1], "z":rawData[2]}
         results = {}
         for k in keys:          
             for index, value in enumerate(areas[k]):
-                if data[0] < value:
+                if data[k] < value:
                     results[k] = index
         
         currentPosition = (results['x'], results['y'], results['z'])
                 
-        if(currentPosition != lastPosition):
+        if lastPosition != currentPosition:
             print "here is current position: " + repr(currentPosition)
             sampleData[lastPosition][currentPosition]+=1
             currentPosition = lastPosition
             counter+=1
-    else:
-        print "done taking samples"
-        savePattern(sampleData, "pickles/sampleData.pickle")
+    print "done taking samples"
+    temp = deepcopy(sampleData)
+    for i1, v1 in enumerate(temp):
+        for i2, v2 in enumerate(v1):
+            sampleData[i1][i2] = temp[i1][i2] / sampleLength
+    savePattern(sampleData, "pickles/sampleData.pickle")
 
 
 def printResults(*arg):
