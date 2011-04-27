@@ -142,6 +142,7 @@ def getSampleData(sampleLength):
             for index, value in enumerate(areas[k]):
                 if data[k] < value:
                     results[k] = index
+                else: results[k] = 2
         
         currentPosition = (results['x'], results['y'], results['z'])
                 
@@ -197,9 +198,9 @@ def resetLimits():
     yRange = maxData[1] - minData[1]
     zRange = maxData[2] - minData[2]
     
-    areas["x"] = (minData[0], minData[0] + (xRange/3), minData[0] + (xRange/3)*2, maxData[0])
-    areas["y"] = (minData[1], minData[1] + (yRange/3), minData[1] + (yRange/3)*2, maxData[1])
-    areas["z"] = (minData[2], minData[2] + (zRange/3), minData[2] + (zRange/3)*2, maxData[2])
+    areas["x"] = (minData[0] + (xRange/3), minData[0] + (xRange/3)*2)
+    areas["y"] = (minData[1] + (yRange/3), minData[1] + (yRange/3)*2)
+    areas["z"] = (minData[2] + (zRange/3), minData[2] + (zRange/3)*2)
     
     savePattern(minData, "pickles/minData.pickle")
     savePattern(maxData, "pickles/maxData.pickle")
