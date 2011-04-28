@@ -11,6 +11,7 @@ import getopt
 import serial
 import pickle
 import atexit
+import time
 from copy import deepcopy
 
 
@@ -20,11 +21,18 @@ Use -c or --calibrate with additional flags
 -a, --attack
 -b, --build
 -s, --scan
+
+-l, --limits will set the range of the accelerometer
+-g, --getSample will take sample data and compare it with save patterns
 '''
 
 # global stuff
 try:
-    ser = serial.Serial('/dev/tty.usbserial-A7004INu', 9600)
+#    ser = serial.Serial('/dev/tty.usbserial-A7004INu', 9600)
+    ser = serial.Serial('/dev/ttyUSB0', 9600)
+    ser.readline()
+    ser.readline()
+    ser.readline()
     ser.flush()
 except:
     print "cant connect to serial"
@@ -60,7 +68,7 @@ def main(argv=None):
             if option in ("-l", "--limits"):
                 defineLimits()
             if option in ("-g", "--getSample"):
-                getSampleData(value)
+                getSampleData(int(value))
                 
     except Usage, err:
         print >> sys.stderr, sys.argv[0].split("/")[-1] + ": " + str(err.msg)
@@ -90,12 +98,13 @@ def defineLimits():
     atexit.register(resetLimits)
     while 1:
         try:
-            ser.flush()
-            data = ser.readline().split()
+            data = ser.readline()
+            data = data.split()
+
             for i in range(len(data)):
+                print data[i]
                 data[i] = int(data[i])
-                
-                # findRange(data, minData, maxData)
+            # findRange(data, minData, maxData)
             for i in range(len(maxData)):
                 if data[i] < 255 and data[i] > maxData[i]:
                     maxData[i] = data[i]
@@ -127,35 +136,39 @@ def getSampleData(sampleLength):
     counter = 0
     while counter < sampleLength:
         try:
-            ser.flush()
-            rawData = ser.readline().split()
+            data = ser.readline()
+            data = data.split()
         except:
-            rawData = None
+            data = None
             print "can't read serial"
-        if rawData:
-            for i in range(len(rawData)): rawData[i] = int(rawData[i])
+        if data:
+            for i in range(len(data)): data[i] = int(data[i])
             
-        keys = ["x","y","z"]
-        data = {"x":rawData[0], "y":rawData[1], "z":rawData[2]}
+        keys = ['x', 'y', 'z']
+        data = {'x': data[0], 'y': data[1], 'z': data[2]}
         results = {}
-        for k in keys:          
-            for index, value in enumerate(areas[k]):
-                if data[k] < value:
-                    results[k] = index
-                else: results[k] = 2
-        
+        for k in keys:
+            if data[k] < areas[k][0]: results[k] = 0
+            elif data[k] < areas[k][1]: results[k] = 1
+            else: results[k] = 2
+#            for index, value in enumerate(areas[k]):
+#                if data[k] < value:
+#                    results[k] = index
+#                else: results[k] = 2
         currentPosition = (results['x'], results['y'], results['z'])
                 
         if lastPosition != currentPosition:
             print "here is current position: " + repr(currentPosition)
             sampleData[lastPosition][currentPosition]+=1
-            currentPosition = lastPosition
+            lastPosition = currentPosition
             counter+=1
+
+
     print "done taking samples"
     temp = deepcopy(sampleData)
-    for i1, v1 in enumerate(temp):
-        for i2, v2 in enumerate(v1):
-            sampleData[i1][i2] = temp[i1][i2] / sampleLength
+    for i in temp.keys():
+        for j in temp[i].keys():
+            sampleData[i][j] = temp[i][j] / float(sampleLength)
     savePattern(sampleData, "pickles/sampleData.pickle")
 
 
