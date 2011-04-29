@@ -34,8 +34,8 @@ try:
     ser.readline()
     ser.readline()
     ser.flush()
-except:
-    print "cant connect to serial"
+except serial.serialutil.SerialException as detail:
+    print 'Serial error:', detail
 
 # these are used to define the limits of the sensor
 maxData = [0,0,0]
@@ -76,17 +76,27 @@ def main(argv=None):
         return 2
 
 def calibrateAttack():
+    attackPattern = getSampleData(100)
     print "calibrate attack"
+    savePattern(attackPattern, "pickles/attackPattern.pickle")
+
 
 def calibrateBuild():
+    buildPattern = getSampleData(100)
     print "calibrate build"
-    minData, maxData, areas = loadLimits()
-    print minData
-    print maxData
-    print areas
+    savePattern(buildPattern, "pickles/buildPattern.pickle")
 
 def calibrateScan():
-    print "calibrate scan"
+    try:
+        scanPattern = loadPattern("pickles/scanPattern.pickle")
+    except IOError:
+        print "can't find saved data"
+
+    if scanPattern: scanPattern = getSampleData(100,scanPattern)
+    else: scanPattern = getSampleData(100)
+
+    print "scan calibrated"
+    savePattern(scanPattern, "pickles/scanPattern.pickle")
 
 
 def defineLimits():
@@ -99,8 +109,12 @@ def defineLimits():
     while 1:
         try:
             data = ser.readline()
+        except (KeyboardInterrupt, SystemExit):
+            raise
+        except serial.serialutil.SerialException as detail:
+            print 'Serial error:', detail
+        else:
             data = data.split()
-
             for i in range(len(data)):
                 print data[i]
                 data[i] = int(data[i])
@@ -111,25 +125,17 @@ def defineLimits():
                 
                 if data[i] < minData[i]:
                     minData[i] = data[i]
-            
             printResults(minData, maxData)
         
-        except (KeyboardInterrupt, SystemExit):
-            raise
-        
-        except NameError:
-            sys.exit("bad serial data")
 
 
-def getSampleData(sampleLength):
+
+def getSampleData(sampleLength, averageSoFar=None):
     """
-    Follow the position of the sensor, increment time series only when position has left a region (created in resetLimits)
-    Returns a nested dictionary with tuple for keys
-    To find the number of times the sensor has transitioned from one region to another, access the dictionary
-    with the before and after regions as tuples, eg:
-    number of times sensor transitioned from one region to another = sampleData[0,2,1][2,0,1]
+    Get some sample data in the form of a nested dictionary.m length
+    Value is the percentage of times a transition happened, transition is defined in the dictionary
+    Keys of dictionaries are tuples that represent spacial coordinates.
     """
-    #TODO Need to take sampleData and transform totals to percentage by dividing the number of occurances by sampleLength
     sampleData = initPattern(1)
     lastPosition = (0,0,0)
     areas = loadPattern("pickles/areas.pickle")
@@ -138,9 +144,9 @@ def getSampleData(sampleLength):
         try:
             data = ser.readline()
             data = data.split()
-        except:
+        except serial.serialutil.SerialException as detail:
+            print 'Serial error:', detail
             data = None
-            print "can't read serial"
         if data:
             for i in range(len(data)): data[i] = int(data[i])
             
@@ -151,10 +157,7 @@ def getSampleData(sampleLength):
             if data[k] < areas[k][0]: results[k] = 0
             elif data[k] < areas[k][1]: results[k] = 1
             else: results[k] = 2
-#            for index, value in enumerate(areas[k]):
-#                if data[k] < value:
-#                    results[k] = index
-#                else: results[k] = 2
+
         currentPosition = (results['x'], results['y'], results['z'])
                 
         if lastPosition != currentPosition:
@@ -163,13 +166,20 @@ def getSampleData(sampleLength):
             lastPosition = currentPosition
             counter+=1
 
-
+    
     print "done taking samples"
     temp = deepcopy(sampleData)
     for i in temp.keys():
         for j in temp[i].keys():
             sampleData[i][j] = temp[i][j] / float(sampleLength)
-    savePattern(sampleData, "pickles/sampleData.pickle")
+    if averageSoFar:
+        temp = deepcopy(sampleData)
+        for i in temp.keys():
+            for j in temp[i]:
+                sampleData[i][j] = (temp[i][j] + averageSoFar[i][j]) / 2.0
+    return sampleData
+    #savePattern(sampleData, "pickles/sampleData.pickle")
+
 
 
 def printResults(*arg):
