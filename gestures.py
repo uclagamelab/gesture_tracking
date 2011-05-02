@@ -17,10 +17,9 @@ from copy import deepcopy
 
 help_message = '''
 Use -l, --limits to set the min and max limits for the sensor
-Use -c or --calibrate with additional flags
--a, --attack
--b, --build
--s, --scan
+Use -c or --calibrate with name of pattern you want to calibrate
+e.g. scan, build or attack
+
 
 -l, --limits will set the range of the accelerometer
 -g, --getSample will take sample data and compare it with save patterns
@@ -52,51 +51,48 @@ def main(argv=None):
         argv = sys.argv
     try:
         try:
-            opts, args = getopt.getopt(argv[1:], "hg:casbl", ["help", "calibrate", "attack", "build", "scan", "limits", "getSample="])
+            opts, args = getopt.getopt(argv[1:], "hc:lm", ["help", "calibrate=", "limits", "match"])
         except getopt.error, msg:
             raise Usage(msg)
             
         for option, value in opts:
             if option in ("-h", "--help"):
                 raise Usage(help_message)
-            if option in (("-c", "--calibrate") and ("-a", "--attack")):
-                calibrateAttack()
-            if option in (("-c", "--calibrate") and ("-b", "--build")):
-                calibrateBuild()
-            if option in (("-c", "--calibrate") and ("-s", "--scan")):
-                calibrateScan()
+            if option in ("-c", "--calibrate"):
+                calibratePattern(value)
             if option in ("-l", "--limits"):
                 defineLimits()
-            if option in ("-g", "--getSample"):
-                getSampleData(int(value))
+            if option in ("-m", "match"):
+                matchPattern()
                 
     except Usage, err:
         print >> sys.stderr, sys.argv[0].split("/")[-1] + ": " + str(err.msg)
         print >> sys.stderr, "\t for help use --help"
         return 2
 
-def calibrateAttack():
-    attackPattern = getSampleData(100)
-    print "calibrate attack"
-    savePattern(attackPattern, "pickles/attackPattern.pickle")
 
-
-def calibrateBuild():
-    buildPattern = getSampleData(100)
-    print "calibrate build"
-    savePattern(buildPattern, "pickles/buildPattern.pickle")
-
-def calibrateScan():
+def calibratePattern(pattern):
     try:
-        scanPattern = loadPattern("pickles/scanPattern.pickle")
+        tempPattern = loadPattern("pickles/"+pattern+"Pattern.pickle")
     except IOError:
         print "can't find saved data"
+        tempPattern = None
 
-    if scanPattern: scanPattern = getSampleData(100,scanPattern)
-    else: scanPattern = getSampleData(100)
+    if tempPattern: tempPattern = getSampleData(100,tempPattern)
+    else: tempPattern = getSampleData(100)
 
-    print "scan calibrated"
-    savePattern(scanPattern, "pickles/scanPattern.pickle")
+    print "pattern calibrated"
+    savePattern(tempPattern, "pickles/"+pattern+"Pattern.pickle")
+
+
+
+def matchPattern():
+    while 1:
+        sample = getSampleData(6)
+        temp = deepcopy(sampleData)
+        for i in temp.keys():
+            for j in temp[i].keys():
+                sampleData[i][j] = temp[i][j] / float(sampleLength)
 
 
 def defineLimits():
@@ -107,25 +103,15 @@ def defineLimits():
     """
     atexit.register(resetLimits)
     while 1:
-        try:
-            data = ser.readline()
-        except (KeyboardInterrupt, SystemExit):
-            raise
-        except serial.serialutil.SerialException as detail:
-            print 'Serial error:', detail
-        else:
-            data = data.split()
-            for i in range(len(data)):
-                print data[i]
-                data[i] = int(data[i])
-            # findRange(data, minData, maxData)
-            for i in range(len(maxData)):
-                if data[i] < 255 and data[i] > maxData[i]:
-                    maxData[i] = data[i]
+        data = readSerial()
+        for i in range(len(maxData)):
+            if data[i] < 255 and data[i] > maxData[i]:
+                maxData[i] = data[i]
+
+            if data[i] < minData[i]:
+                minData[i] = data[i]
                 
-                if data[i] < minData[i]:
-                    minData[i] = data[i]
-            printResults(minData, maxData)
+        printResults(minData, maxData)
         
 
 
@@ -141,15 +127,7 @@ def getSampleData(sampleLength, averageSoFar=None):
     areas = loadPattern("pickles/areas.pickle")
     counter = 0
     while counter < sampleLength:
-        try:
-            data = ser.readline()
-            data = data.split()
-        except serial.serialutil.SerialException as detail:
-            print 'Serial error:', detail
-            data = None
-        if data:
-            for i in range(len(data)): data[i] = int(data[i])
-            
+        data = readSerial()            
         keys = ['x', 'y', 'z']
         data = {'x': data[0], 'y': data[1], 'z': data[2]}
         results = {}
@@ -181,6 +159,17 @@ def getSampleData(sampleLength, averageSoFar=None):
     #savePattern(sampleData, "pickles/sampleData.pickle")
 
 
+def readSerial():
+        try:
+            data = ser.readline()
+        except (KeyboardInterrupt, SystemExit):
+            raise
+        except serial.serialutil.SerialException as detail:
+            print 'Serial error:', detail
+        else:
+            data.split()
+            for i in range(len(data)): data[i] = int(data[i])
+            return data
 
 def printResults(*arg):
     os.system('clear')
@@ -224,17 +213,13 @@ def resetLimits():
     areas["x"] = (minData[0] + (xRange/3), minData[0] + (xRange/3)*2)
     areas["y"] = (minData[1] + (yRange/3), minData[1] + (yRange/3)*2)
     areas["z"] = (minData[2] + (zRange/3), minData[2] + (zRange/3)*2)
-    
-    savePattern(minData, "pickles/minData.pickle")
-    savePattern(maxData, "pickles/maxData.pickle")
+
     savePattern(areas, "pickles/areas.pickle")
     print "everything saved"
 
 def loadLimits():
-    minData = loadPattern("pickles/minData.pickle")
-    maxData = loadPattern("pickles/maxData.pickle")
     areas = loadPattern("pickles/areas.pickle")
-    return minData, maxData, areas
+    return areas
 
 
 
