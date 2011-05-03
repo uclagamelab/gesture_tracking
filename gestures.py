@@ -87,12 +87,26 @@ def calibratePattern(pattern):
 
 
 def matchPattern():
+    attack = loadPattern("pickles/attackPattern.pickle")
+    scan = loadPattern("pickles/scanPattern.pickle")
+    build = loadPattern("pickles/buildPattern.pickle")
+    bestFit = {}
+    sample = None
     while 1:
-        sample = getSampleData(6)
-        temp = deepcopy(sampleData)
-        for i in temp.keys():
-            for j in temp[i].keys():
-                sampleData[i][j] = temp[i][j] / float(sampleLength)
+        sample = getSampleData(6, sample)
+        bestFit['attack'] = patternDifference(sample, attack)
+        bestFit['build'] = patternDifference(sample, build)
+        bestFit['scan'] = patternDifference(sample, scan)
+        print min(bestFit, key=bestFit.get)
+
+def patternDifference(a,b):
+    totalDifference = float(sys.maxint)
+    for i in a.keys():
+        for j in a[i].keys():
+            totalDifference -= abs( a[i][j] - b[i][j] )
+    totalDifference = sys.maxint - totalDifference
+    return totalDifference
+
 
 
 def defineLimits():
@@ -139,13 +153,13 @@ def getSampleData(sampleLength, averageSoFar=None):
         currentPosition = (results['x'], results['y'], results['z'])
                 
         if lastPosition != currentPosition:
-            print "here is current position: " + repr(currentPosition)
+            #print "here is current position: " + repr(currentPosition)
             sampleData[lastPosition][currentPosition]+=1
             lastPosition = currentPosition
             counter+=1
 
     
-    print "done taking samples"
+    #print "done taking samples"
     temp = deepcopy(sampleData)
     for i in temp.keys():
         for j in temp[i].keys():
@@ -167,7 +181,7 @@ def readSerial():
         except serial.serialutil.SerialException as detail:
             print 'Serial error:', detail
         else:
-            data.split()
+            data = data.split()
             for i in range(len(data)): data[i] = int(data[i])
             return data
 
