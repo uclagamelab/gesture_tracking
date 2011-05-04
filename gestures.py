@@ -87,14 +87,16 @@ def calibratePattern(pattern):
 
 
 def matchPattern():
-    attack = loadPattern("pickles/attackPattern.pickle")
+    attackRight = loadPattern("pickles/attackRightPattern.pickle")
+    attackLeft = loadPattern("pickles/attackLeftPattern.pickle")
     scan = loadPattern("pickles/scanPattern.pickle")
     build = loadPattern("pickles/buildPattern.pickle")
     bestFit = {}
     sample = None
     while 1:
-        sample = getSampleData(6, sample)
-        bestFit['attack'] = patternDifference(sample, attack)
+        sample = getSampleData(2, sample)
+        bestFit['attackRight'] = patternDifference(sample, attackRight)
+        bestFit['attackLeft'] = patternDifference(sample, attackLeft)
         bestFit['build'] = patternDifference(sample, build)
         bestFit['scan'] = patternDifference(sample, scan)
         print min(bestFit, key=bestFit.get)
